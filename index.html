@@ -78,7 +78,7 @@
       <input id="login-pin" type="password" inputmode="numeric" maxlength="4" placeholder="••••" />
       <button class="btn" style="margin-top:14px;" onclick="handleLogin()">Masuk</button>
       <p id="login-error" class="hint" style="color:var(--bad);"></p>
-      <p class="hint">Admin? <a href="#" onclick="showAdminLogin();return false;">Masuk sebagai admin</a></p>
+      <button class="btn btn-outline" style="margin-top:8px;" onclick="showAdminLogin()">Masuk sebagai Admin</button>
     </div>
   </div>
 </div>
@@ -93,7 +93,7 @@
       <input id="admin-pass" type="password" placeholder="Kata sandi" />
       <button class="btn" style="margin-top:14px;" onclick="handleAdminLogin()">Masuk</button>
       <p id="admin-login-error" class="hint" style="color:var(--bad);"></p>
-      <p class="hint"><a href="#" onclick="showTukangLogin();return false;">← Kembali</a></p>
+      <button class="btn btn-outline" style="margin-top:8px;" onclick="showTukangLogin()">← Kembali</button>
     </div>
   </div>
 </div>
