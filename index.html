@@ -297,10 +297,10 @@ const SUPABASE_ANON_KEY = "sb_publishable_5UueLSYBPZ2J1CI4r4YHpQ_c4D9qYjp";
 
 const ADMIN_PASSWORD = "admin123"; // ganti sebelum deploy
 
-let supabase = null;
+let sb = null;
 let configured = SUPABASE_URL.indexOf("YOUR-PROJECT") === -1 && SUPABASE_ANON_KEY.indexOf("YOUR-ANON-KEY") === -1;
 if (configured) {
-  supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 }
 
 let currentTukang = null;
@@ -367,10 +367,10 @@ let fotoLogLocal = [];
 /* ---------- load data ---------- */
 async function loadData() {
   if (configured) {
-    const { data: t } = await supabase.from("tukang").select("*").order("nama");
-    const { data: p } = await supabase.from("proyek").select("*").eq("aktif", true).order("nama");
-    const { data: k } = await supabase.from("kasbon").select("*").order("tanggal", { ascending:false });
-    const { data: b } = await supabase.from("borongan").select("*").order("created_at", { ascending:false });
+    const { data: t } = await sb.from("tukang").select("*").order("nama");
+    const { data: p } = await sb.from("proyek").select("*").eq("aktif", true).order("nama");
+    const { data: k } = await sb.from("kasbon").select("*").order("tanggal", { ascending:false });
+    const { data: b } = await sb.from("borongan").select("*").order("created_at", { ascending:false });
     tukangList = t || [];
     proyekList = p || [];
     kasbonList = k || [];
@@ -388,7 +388,7 @@ async function loadData() {
 
 async function fetchAbsensi(filters = {}) {
   if (configured) {
-    let q = supabase.from("absensi_log").select("*, tukang(nama), proyek(nama)").order("created_at", { ascending:false });
+    let q = sb.from("absensi_log").select("*, tukang(nama), proyek(nama)").order("created_at", { ascending:false });
     if (filters.tukangId) q = q.eq("tukang_id", filters.tukangId);
     const { data } = await q.limit(filters.limit || 200);
     return (data || []).map(r => ({ ...r, tukang_nama: r.tukang?.nama, proyek_nama: r.proyek?.nama }));
@@ -541,7 +541,7 @@ function handleCheckIn() {
     updateRadar(dist, p.radius_m, valid);
     const entry = { tukang_id: currentTukang.id, proyek_id: p.id, lat: latitude, lng: longitude, jarak_m: Math.round(dist), valid, sumber: "gps" };
     if (configured) {
-      const { data } = await supabase.from("absensi_log").insert(entry).select().single();
+      const { data } = await sb.from("absensi_log").insert(entry).select().single();
       openSessionId = data?.id || null;
     } else {
       const rec = { ...entry, id: Date.now(), tukang_nama: currentTukang.nama, proyek_nama: p.nama, created_at: new Date().toISOString(), checkout_at: null };
@@ -561,9 +561,9 @@ async function handleCheckOut() {
   if (!openSessionId) return;
   const now = new Date().toISOString();
   if (configured) {
-    const { data: row } = await supabase.from("absensi_log").select("created_at").eq("id", openSessionId).single();
+    const { data: row } = await sb.from("absensi_log").select("created_at").eq("id", openSessionId).single();
     const jam = sessionHours(row.created_at, now);
-    await supabase.from("absensi_log").update({ checkout_at: now, jam_kerja: jam }).eq("id", openSessionId);
+    await sb.from("absensi_log").update({ checkout_at: now, jam_kerja: jam }).eq("id", openSessionId);
   } else {
     const rec = absensiLogLocal.find(r => r.id === openSessionId);
     if (rec) { rec.checkout_at = now; rec.jam_kerja = sessionHours(rec.created_at, now); }
@@ -628,7 +628,7 @@ async function handleAddManual() {
   const jam = checkOut ? sessionHours(checkIn, checkOut) : null;
   const entry = { tukang_id: tukangId, proyek_id: proyekId, created_at: checkIn, checkout_at: checkOut, jam_kerja: jam, valid: true, sumber: "manual", catatan };
   if (configured) {
-    await supabase.from("absensi_log").insert(entry);
+    await sb.from("absensi_log").insert(entry);
   } else {
     const t = tukangList.find(x=>x.id===tukangId), p = proyekList.find(x=>x.id===proyekId);
     absensiLogLocal.unshift({ ...entry, id: Date.now(), tukang_nama: t?.nama, proyek_nama: p?.nama });
@@ -661,9 +661,9 @@ async function closeOpenSession(id, dateStr) {
   const t = document.getElementById(`close-time-${id}`).value;
   const checkOut = toISO(dateStr, t);
   if (configured) {
-    const { data: row } = await supabase.from("absensi_log").select("created_at").eq("id", id).single();
+    const { data: row } = await sb.from("absensi_log").select("created_at").eq("id", id).single();
     const jam = sessionHours(row.created_at, checkOut);
-    await supabase.from("absensi_log").update({ checkout_at: checkOut, jam_kerja: jam }).eq("id", id);
+    await sb.from("absensi_log").update({ checkout_at: checkOut, jam_kerja: jam }).eq("id", id);
   } else {
     const rec = absensiLogLocal.find(r => r.id == id);
     if (rec) { rec.checkout_at = checkOut; rec.jam_kerja = sessionHours(rec.created_at, checkOut); }
@@ -694,10 +694,10 @@ async function handlePhotoUpload(e) {
   for (const f of files) {
     if (configured) {
       const path = `${proyekId}/${Date.now()}_${f.name}`;
-      const { error } = await supabase.storage.from("foto-kerja").upload(path, f);
+      const { error } = await sb.storage.from("foto-kerja").upload(path, f);
       if (error) { alert("Gagal unggah: " + error.message); continue; }
-      const { data: urlData } = supabase.storage.from("foto-kerja").getPublicUrl(path);
-      await supabase.from("foto_kerja").insert({ tukang_id: currentTukang.id, proyek_id: proyekId, foto_url: urlData.publicUrl, keterangan: caption });
+      const { data: urlData } = sb.storage.from("foto-kerja").getPublicUrl(path);
+      await sb.from("foto_kerja").insert({ tukang_id: currentTukang.id, proyek_id: proyekId, foto_url: urlData.publicUrl, keterangan: caption });
     } else {
       const dataUrl = await fileToDataUrl(f);
       fotoLogLocal.unshift({ id: Date.now()+Math.random(), foto_url: dataUrl, keterangan: caption, tukang_nama: currentTukang.nama, proyek_nama: proyek?.nama, created_at: new Date().toISOString(), tukang_id: currentTukang.id });
@@ -712,7 +712,7 @@ async function renderFotoGrid() {
   const el = document.getElementById("foto-grid");
   let rows = [];
   if (configured) {
-    let q = supabase.from("foto_kerja").select("*, tukang(nama), proyek(nama)").order("created_at", { ascending:false }).limit(20);
+    let q = sb.from("foto_kerja").select("*, tukang(nama), proyek(nama)").order("created_at", { ascending:false }).limit(20);
     if (!isAdmin) q = q.eq("tukang_id", currentTukang.id);
     const { data } = await q;
     rows = (data || []).map(r => ({ ...r, tukang_nama: r.tukang?.nama, proyek_nama: r.proyek?.nama }));
@@ -752,7 +752,7 @@ async function toggleVerified(id) {
   const t = tukangList.find(x => x.id === id);
   if (!t) return;
   t.verified = !t.verified;
-  if (configured) await supabase.from("tukang").update({ verified: t.verified }).eq("id", id);
+  if (configured) await sb.from("tukang").update({ verified: t.verified }).eq("id", id);
   renderTukangList();
   renderLoginSelect();
 }
@@ -765,8 +765,8 @@ async function handleAddTukang() {
   if (!nama || pin.length !== 4) { alert("Isi nama dan PIN 4 digit."); return; }
   const entry = { nama, keahlian, hp, pin, verified: false, gaji_harian: gaji };
   if (configured) {
-    await supabase.from("tukang").insert(entry);
-    const { data } = await supabase.from("tukang").select("*").order("nama");
+    await sb.from("tukang").insert(entry);
+    const { data } = await sb.from("tukang").select("*").order("nama");
     tukangList = data || [];
   } else {
     tukangList.push({ ...entry, id: "local-" + Date.now() });
@@ -792,8 +792,8 @@ async function handleAddKasbon() {
   if (!tukangId || !jumlah || jumlah <= 0) { alert("Pilih tukang dan isi jumlah."); return; }
   const entry = { tukang_id: tukangId, tanggal, jumlah, keterangan: ket };
   if (configured) {
-    await supabase.from("kasbon").insert(entry);
-    const { data } = await supabase.from("kasbon").select("*").order("tanggal", { ascending:false });
+    await sb.from("kasbon").insert(entry);
+    const { data } = await sb.from("kasbon").select("*").order("tanggal", { ascending:false });
     kasbonList = data || [];
   } else {
     kasbonList.unshift({ ...entry, id: Date.now() });
@@ -831,8 +831,8 @@ async function handleAddBorongan() {
   if (!nama || boronganSelected.length === 0) { alert("Isi nama proyek dan pilih minimal 1 tukang."); return; }
   const entry = { nama, nilai_kontrak: nilai, tanggal_mulai: mulai, tanggal_selesai: null, status: "aktif", tukang_ids: boronganSelected };
   if (configured) {
-    await supabase.from("borongan").insert(entry);
-    const { data } = await supabase.from("borongan").select("*").order("created_at", { ascending:false });
+    await sb.from("borongan").insert(entry);
+    const { data } = await sb.from("borongan").select("*").order("created_at", { ascending:false });
     boronganList = data || [];
   } else {
     boronganList.unshift({ ...entry, id: Date.now() });
@@ -877,8 +877,8 @@ async function finishBorongan(id) {
   const b = boronganList.find(x => x.id == id);
   const finalVal = parseInt(finalInput, 10) || b.nilai_kontrak;
   if (configured) {
-    await supabase.from("borongan").update({ status:"selesai", tanggal_selesai: todayStr(), nilai_final: finalVal }).eq("id", id);
-    const { data } = await supabase.from("borongan").select("*").order("created_at", { ascending:false });
+    await sb.from("borongan").update({ status:"selesai", tanggal_selesai: todayStr(), nilai_final: finalVal }).eq("id", id);
+    const { data } = await sb.from("borongan").select("*").order("created_at", { ascending:false });
     boronganList = data || [];
   } else {
     b.status = "selesai"; b.tanggal_selesai = todayStr(); b.nilai_final = finalVal;
