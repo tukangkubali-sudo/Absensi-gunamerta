@@ -1,31 +1,957 @@
--- Tambah kolom baru ke tabel yang sudah ada
-alter table tukang add column if not exists gaji_harian numeric default 0;
-alter table absensi_log add column if not exists checkout_at timestamptz;
-alter table absensi_log add column if not exists jam_kerja numeric;
-alter table absensi_log add column if not exists sumber text default 'gps';
-alter table absensi_log add column if not exists catatan text;
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
+<title>Absensi Tukang — Guna Merta Home Service</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  :root{
+    --ink:#14181C; --blueprint:#1C3F52; --blueprint-dark:#12303F;
+    --concrete:#9AA5AC; --border:#DDD9CC; --canvas:#EDEDE6;
+    --ok:#2C7A3D; --ok-bg:#E6F4E9; --bad:#B23B3B; --bad-bg:#FDECEC;
+    --yellow:#F5B700;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;font-family:'Inter',system-ui,-apple-system,sans-serif;background:var(--canvas);color:var(--ink);}
+  @import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=Inter:wght@400;500;600&display=swap');
+  .display{font-family:'Barlow Condensed',sans-serif;letter-spacing:.02em;}
+  header{background:var(--blueprint);color:#fff;padding:20px 18px 16px;position:sticky;top:0;z-index:20;}
+  header h1{margin:0;font-size:22px;font-weight:700;text-transform:uppercase;}
+  header p{margin:2px 0 0;font-size:12px;color:#A9C4D2;}
+  main{max-width:480px;margin:0 auto;padding:16px;padding-bottom:90px;}
+  .card{background:#fff;border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:14px;box-shadow:0 1px 3px rgba(0,0,0,.04);}
+  label{font-size:12px;font-weight:600;color:#6B7278;display:block;margin-bottom:4px;}
+  select,input{width:100%;padding:11px;border:1px solid var(--border);border-radius:10px;font-size:14px;background:#fff;color:var(--ink);}
+  select:focus,input:focus{outline:2px solid var(--blueprint);outline-offset:1px;}
+  .btn{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;padding:13px;border-radius:10px;font-weight:600;font-size:14px;border:none;cursor:pointer;color:#fff;background:var(--blueprint);}
+  .btn:disabled{opacity:.5;cursor:not-allowed;}
+  .btn-outline{background:#fff;color:#6B7278;border:1px solid var(--border);}
+  .btn-green{background:var(--ok);}
+  .btn-red{background:var(--bad);}
+  .btn-sm{padding:8px 12px;font-size:12px;width:auto;}
+  .row{display:flex;gap:8px;}
+  .row > *{flex:1;}
+  nav.bottom{position:fixed;bottom:0;left:0;right:0;background:#fff;border-top:1px solid var(--border);display:flex;justify-content:space-around;padding:6px 0;max-width:480px;margin:0 auto;overflow-x:auto;}
+  nav.bottom button{background:none;border:none;display:flex;flex-direction:column;align-items:center;gap:2px;padding:6px 10px;color:var(--concrete);font-size:10px;font-weight:600;cursor:pointer;flex-shrink:0;}
+  nav.bottom button.active{color:var(--blueprint);}
+  .badge{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:600;padding:4px 9px;border-radius:999px;}
+  .badge-ok{background:var(--ok-bg);color:var(--ok);}
+  .badge-bad{background:var(--bad-bg);color:var(--bad);}
+  .tukang-item{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;padding:12px 0;border-bottom:1px solid #F0EEE4;}
+  .tukang-item:last-child{border-bottom:none;}
+  .tukang-nama{font-weight:600;font-size:14px;}
+  .tukang-sub{font-size:12px;color:#6B7278;margin-top:2px;}
+  .radar{position:relative;width:150px;height:150px;margin:6px auto;display:flex;align-items:center;justify-content:center;}
+  .radar-ring{position:absolute;width:140px;height:140px;border-radius:50%;border:2px solid var(--blueprint);opacity:.2;}
+  .radar-pulse{position:absolute;border-radius:50%;transition:all .6s ease;}
+  .radar-dot{position:relative;width:60px;height:60px;border-radius:50%;display:flex;align-items:center;justify-content:center;transition:background-color .5s;}
+  .status-text{text-align:center;font-size:13px;font-weight:600;min-height:20px;margin-top:4px;}
+  .photo-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+  .photo-card{border:1px solid var(--border);border-radius:12px;overflow:hidden;background:#fff;position:relative;}
+  .photo-card img{width:100%;height:120px;object-fit:cover;display:block;}
+  .photo-meta{padding:8px;}
+  .photo-meta p{margin:0;font-size:11px;}
+  .photo-meta .p-proyek{font-weight:600;}
+  .photo-meta .p-sub{color:#6B7278;margin-top:2px;}
+  .del-btn{position:absolute;top:6px;right:6px;background:rgba(0,0,0,.5);border:none;color:#fff;border-radius:999px;width:22px;height:22px;font-size:12px;cursor:pointer;}
+  .empty{text-align:center;padding:36px 10px;color:var(--concrete);font-size:13px;}
+  .toggle-btn{font-size:11px;font-weight:600;padding:6px 10px;border-radius:8px;border:none;color:#fff;cursor:pointer;}
+  .hint{font-size:11px;color:var(--concrete);margin-top:6px;}
+  .login-wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px;}
+  .login-box{width:100%;max-width:340px;text-align:center;}
+  .logo-dot{width:52px;height:52px;background:var(--blueprint);border-radius:14px;margin:0 auto 14px;display:flex;align-items:center;justify-content:center;color:#fff;font-size:22px;font-weight:700;}
+  .hidden{display:none !important;}
+  .config-warning{background:#FDECEC;color:#B23B3B;padding:12px;border-radius:10px;font-size:12px;margin-bottom:14px;}
+  .row-between{display:flex;justify-content:space-between;align-items:center;}
+  .mono{font-variant-numeric:tabular-nums;}
+  .lokasi-row{display:flex;justify-content:space-between;font-size:12px;padding:4px 0;font-weight:600;}
+  .entry-row{display:flex;justify-content:space-between;font-size:12px;padding:3px 0;color:#6B7278;}
+  .divider{border-top:1px solid var(--border);margin:10px 0;}
+</style>
+</head>
+<body>
 
--- Tabel baru: kasbon
-create table if not exists kasbon (
-  id uuid primary key default gen_random_uuid(),
-  tukang_id uuid references tukang(id),
-  tanggal date not null,
-  jumlah numeric not null,
-  keterangan text,
-  created_at timestamptz default now()
-);
+<!-- ============ LOGIN VIEW ============ -->
+<div id="view-login" class="login-wrap">
+  <div class="login-box">
+    <div class="logo-dot">GM</div>
+    <h1 class="display" style="font-size:22px;margin:0 0 4px;">Absensi Tukang</h1>
+    <p style="font-size:13px;color:#6B7278;margin:0 0 20px;">Guna Merta Home Service</p>
+    <div class="card" style="text-align:left;">
+      <label>Pilih Nama</label>
+      <select id="login-tukang"></select>
+      <label style="margin-top:12px;">PIN (4 digit)</label>
+      <input id="login-pin" type="password" inputmode="numeric" maxlength="4" placeholder="••••" />
+      <button class="btn" style="margin-top:14px;" onclick="handleLogin()">Masuk</button>
+      <p id="login-error" class="hint" style="color:var(--bad);"></p>
+      <button class="btn btn-outline" style="margin-top:8px;" onclick="showAdminLogin()">Masuk sebagai Admin</button>
+    </div>
+  </div>
+</div>
 
--- Tabel baru: borongan
-create table if not exists borongan (
-  id uuid primary key default gen_random_uuid(),
-  nama text not null,
-  tukang_ids uuid[] not null,
-  nilai_kontrak numeric default 0,
-  nilai_final numeric,
-  tanggal_mulai date not null,
-  tanggal_selesai date,
-  status text default 'aktif',
-  created_at timestamptz default now()
-);
+<!-- ============ ADMIN LOGIN ============ -->
+<div id="view-admin-login" class="login-wrap hidden">
+  <div class="login-box">
+    <div class="logo-dot">A</div>
+    <h1 class="display" style="font-size:22px;margin:0 0 14px;">Masuk Admin</h1>
+    <div class="card" style="text-align:left;">
+      <label>Kata Sandi Admin</label>
+      <input id="admin-pass" type="password" placeholder="Kata sandi" />
+      <button class="btn" style="margin-top:14px;" onclick="handleAdminLogin()">Masuk</button>
+      <p id="admin-login-error" class="hint" style="color:var(--bad);"></p>
+      <button class="btn btn-outline" style="margin-top:8px;" onclick="showTukangLogin()">← Kembali</button>
+    </div>
+  </div>
+</div>
 
--- Jangan lupa aktifkan RLS + policy sesuai kebutuhan untuk tabel baru ini
+<!-- ============ MAIN APP ============ -->
+<div id="view-app" class="hidden">
+  <header>
+    <h1 class="display" id="header-title">Absensi Tukang</h1>
+    <p id="header-sub">—</p>
+  </header>
+
+  <main>
+    <div id="config-warning" class="config-warning hidden">
+      Supabase belum dikonfigurasi. Isi SUPABASE_URL dan SUPABASE_ANON_KEY di bagian atas file ini.
+    </div>
+
+    <!-- TAB: ABSENSI -->
+    <section id="tab-absensi">
+      <!-- Tampilan TUKANG: GPS check-in/out -->
+      <div id="absensi-tukang-view">
+        <div class="card">
+          <label>Proyek</label>
+          <select id="absen-proyek" onchange="onProyekChange()"></select>
+          <p class="hint" id="absen-proyek-info"></p>
+        </div>
+        <div class="card" style="text-align:center;">
+          <div class="radar">
+            <div class="radar-ring"></div>
+            <div class="radar-pulse" id="radar-pulse" style="width:0;height:0;background:#9AA5AC;opacity:.2;"></div>
+            <div class="radar-dot" id="radar-dot" style="background:#9AA5AC;">📍</div>
+          </div>
+          <p class="status-text" id="absen-status">Tekan tombol untuk absen di lokasi proyek</p>
+          <button class="btn" id="btn-checkin" onclick="handleCheckIn()">Absen Masuk</button>
+          <button class="btn btn-red hidden" id="btn-checkout" style="margin-top:8px;" onclick="handleCheckOut()">Absen Pulang</button>
+          <p class="hint">Pastikan GPS & izin lokasi browser aktif.</p>
+        </div>
+        <div id="absen-riwayat"></div>
+      </div>
+
+      <!-- Tampilan ADMIN: catat/koreksi jam manual -->
+      <div id="absensi-admin-view" class="hidden">
+        <div class="card">
+          <p class="display" style="font-size:17px;font-weight:700;margin:0 0 8px;">Tambah / Koreksi Jam Kerja</p>
+          <label>Tukang</label>
+          <select id="man-tukang"></select>
+          <label style="margin-top:8px;">Proyek</label>
+          <select id="man-proyek"></select>
+          <label style="margin-top:8px;">Tanggal</label>
+          <input id="man-tanggal" type="date" />
+          <div class="row" style="margin-top:8px;">
+            <div>
+              <label>Jam Masuk</label>
+              <input id="man-jam-masuk" type="time" value="08:00" />
+            </div>
+            <div>
+              <label>Jam Pulang</label>
+              <input id="man-jam-pulang" type="time" value="17:00" />
+            </div>
+          </div>
+          <label style="margin-top:8px;">Catatan (opsional)</label>
+          <input id="man-catatan" placeholder="cth: lupa absen pulang" />
+          <button class="btn" style="margin-top:12px;" onclick="handleAddManual()">Simpan Sesi Kerja</button>
+        </div>
+        <div class="card">
+          <p class="display" style="font-size:17px;font-weight:700;margin:0 0 8px;">Sesi Belum Ditutup</p>
+          <div id="sesi-terbuka-list"></div>
+        </div>
+        <div class="card">
+          <p class="display" style="font-size:17px;font-weight:700;margin:0 0 8px;">Riwayat Sesi Kerja</p>
+          <div id="admin-riwayat-sesi"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- TAB: FOTO -->
+    <section id="tab-foto" class="hidden">
+      <div class="card">
+        <label>Proyek</label>
+        <select id="foto-proyek"></select>
+        <label style="margin-top:10px;">Keterangan pekerjaan</label>
+        <input id="foto-caption" placeholder="cth: pasang keramik lantai 1" />
+        <input type="file" id="foto-input" accept="image/*" capture="environment" multiple class="hidden" onchange="handlePhotoUpload(event)" />
+        <button class="btn" style="margin-top:12px;" onclick="document.getElementById('foto-input').click()">📷 Ambil / Unggah Foto</button>
+      </div>
+      <div id="foto-grid"></div>
+    </section>
+
+    <!-- TAB: TUKANG (admin only) -->
+    <section id="tab-tukang" class="hidden">
+      <div class="card">
+        <p class="display" style="font-size:17px;font-weight:700;margin:0 0 8px;">Tambah Tukang</p>
+        <label>Nama</label>
+        <input id="new-nama" placeholder="Nama lengkap" />
+        <label style="margin-top:8px;">Keahlian</label>
+        <input id="new-keahlian" placeholder="cth: Tukang Batu" />
+        <label style="margin-top:8px;">No. HP</label>
+        <input id="new-hp" placeholder="08xx" />
+        <label style="margin-top:8px;">Gaji Harian Penuh (Rp / 8 jam)</label>
+        <input id="new-gaji" type="number" placeholder="cth: 150000" />
+        <label style="margin-top:8px;">PIN (4 digit)</label>
+        <input id="new-pin" maxlength="4" inputmode="numeric" placeholder="4 digit" />
+        <button class="btn" style="margin-top:12px;" onclick="handleAddTukang()">Tambah</button>
+      </div>
+      <div class="card" id="tukang-list-card">
+        <p class="display" style="font-size:17px;font-weight:700;margin:0 0 4px;">Daftar Tukang</p>
+        <div id="tukang-list"></div>
+      </div>
+    </section>
+
+    <!-- TAB: KASBON (admin only) -->
+    <section id="tab-kasbon" class="hidden">
+      <div class="card">
+        <p class="display" style="font-size:17px;font-weight:700;margin:0 0 8px;">Catat Kasbon</p>
+        <label>Tukang</label>
+        <select id="kasbon-tukang"></select>
+        <label style="margin-top:8px;">Tanggal</label>
+        <input id="kasbon-tanggal" type="date" />
+        <label style="margin-top:8px;">Jumlah (Rp)</label>
+        <input id="kasbon-jumlah" type="number" inputmode="numeric" placeholder="cth: 100000" />
+        <label style="margin-top:8px;">Keterangan (opsional)</label>
+        <input id="kasbon-ket" placeholder="cth: beli bensin" />
+        <button class="btn" style="margin-top:12px;" onclick="handleAddKasbon()">Simpan Kasbon</button>
+      </div>
+      <div class="card">
+        <p class="display" style="font-size:17px;font-weight:700;margin:0 0 8px;">Riwayat Kasbon</p>
+        <div id="kasbon-list"></div>
+      </div>
+    </section>
+
+    <!-- TAB: BORONGAN (admin only) -->
+    <section id="tab-borongan" class="hidden">
+      <div class="card">
+        <p class="display" style="font-size:17px;font-weight:700;margin:0 0 8px;">Proyek Borongan Baru</p>
+        <label>Nama Proyek</label>
+        <input id="bor-nama" placeholder="cth: Renovasi Atap Villa X" />
+        <label style="margin-top:8px;">Estimasi Nilai Kontrak (Rp)</label>
+        <input id="bor-nilai" type="number" placeholder="cth: 5000000" />
+        <label style="margin-top:8px;">Mulai Tanggal</label>
+        <input id="bor-mulai" type="date" />
+        <label style="margin-top:8px;">Tukang yang Mengerjakan</label>
+        <div id="bor-tukang-checklist"></div>
+        <button class="btn" style="margin-top:12px;" onclick="handleAddBorongan()">Buat Proyek Borongan</button>
+      </div>
+      <div class="card">
+        <p class="display" style="font-size:17px;font-weight:700;margin:0 0 8px;">Proyek Aktif</p>
+        <div id="borongan-aktif-list"></div>
+      </div>
+      <div class="card">
+        <p class="display" style="font-size:17px;font-weight:700;margin:0 0 8px;">Riwayat Selesai</p>
+        <div id="borongan-selesai-list"></div>
+      </div>
+    </section>
+
+    <!-- TAB: GAJIAN (admin only) -->
+    <section id="tab-gajian" class="hidden">
+      <div class="card">
+        <p class="display" style="font-size:17px;font-weight:700;margin:0 0 8px;">Periode Gajian</p>
+        <div class="row">
+          <div>
+            <label>Dari</label>
+            <input id="gaji-mulai" type="date" onchange="renderGajian()" />
+          </div>
+          <div>
+            <label>Sampai</label>
+            <input id="gaji-sampai" type="date" onchange="renderGajian()" />
+          </div>
+        </div>
+        <p class="hint">Biasa 2 minggu, boleh diperpanjang — geser tanggal "Sampai".</p>
+      </div>
+      <div id="gajian-list"></div>
+      <div class="card" style="font-weight:700;">
+        <div class="row-between mono"><span>TOTAL DIBAYAR</span><span id="gaji-total">Rp 0</span></div>
+      </div>
+    </section>
+  </main>
+
+  <nav class="bottom">
+    <button id="nav-absensi" onclick="switchTab('absensi')" class="active">📍<span>Absensi</span></button>
+    <button id="nav-foto" onclick="switchTab('foto')">📷<span>Foto</span></button>
+    <button id="nav-tukang" onclick="switchTab('tukang')" class="hidden-admin hidden">👥<span>Tukang</span></button>
+    <button id="nav-kasbon" onclick="switchTab('kasbon')" class="hidden-admin hidden">💵<span>Kasbon</span></button>
+    <button id="nav-borongan" onclick="switchTab('borongan')" class="hidden-admin hidden">🔨<span>Borongan</span></button>
+    <button id="nav-gajian" onclick="switchTab('gajian')" class="hidden-admin hidden">💰<span>Gajian</span></button>
+    <button onclick="handleLogout()">🚪<span>Keluar</span></button>
+  </nav>
+</div>
+
+<script>
+/* =====================================================================
+   KONFIGURASI SUPABASE
+   ===================================================================== */
+const SUPABASE_URL = "https://hawzalwaouwimtrerowm.supabase.co";
+const SUPABASE_ANON_KEY = "sb_publishable_5UueLSYBPZ2J1CI4r4YHpQ_c4D9qYjp";
+
+const ADMIN_PASSWORD = "admin123"; // ganti sebelum deploy
+
+let supabase = null;
+let configured = SUPABASE_URL.indexOf("YOUR-PROJECT") === -1 && SUPABASE_ANON_KEY.indexOf("YOUR-ANON-KEY") === -1;
+if (configured) {
+  supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+}
+
+let currentTukang = null;
+let isAdmin = false;
+let tukangList = [];
+let proyekList = [];
+let selectedProyek = null;
+let kasbonList = [];
+let boronganList = [];
+let boronganSelected = [];
+
+/* ---------- util ---------- */
+function haversine(lat1, lng1, lat2, lng2) {
+  const R = 6371000, toRad = d => d * Math.PI / 180;
+  const dLat = toRad(lat2 - lat1), dLng = toRad(lng2 - lng1);
+  const a = Math.sin(dLat/2)**2 + Math.cos(toRad(lat1))*Math.cos(toRad(lat2))*Math.sin(dLng/2)**2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+}
+function fmtTime(iso) {
+  if (!iso) return "--:--";
+  const d = new Date(iso);
+  return d.toLocaleString("id-ID", { day:"2-digit", month:"short", hour:"2-digit", minute:"2-digit" });
+}
+function fmtJamOnly(iso) {
+  if (!iso) return "--:--";
+  return new Date(iso).toLocaleTimeString("id-ID", { hour:"2-digit", minute:"2-digit" });
+}
+function fmtDate(d) {
+  return new Date(d).toLocaleDateString("id-ID", { weekday:"short", day:"2-digit", month:"short", year:"numeric" });
+}
+function fmtIDR(n) { return "Rp " + Math.round(n || 0).toLocaleString("id-ID"); }
+function todayStr() { return new Date().toISOString().slice(0,10); }
+function addDays(dateStr, n) { const d = new Date(dateStr); d.setDate(d.getDate()+n); return d.toISOString().slice(0,10); }
+function toISO(dateStr, hm) { return new Date(`${dateStr}T${hm}:00`).toISOString(); }
+function fileToDataUrl(file) {
+  return new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = rej; r.readAsDataURL(file); });
+}
+/* Standard workday = 8 jam. Sesi > 5 jam otomatis dipotong 1 jam istirahat. */
+function sessionHours(checkIn, checkOut) {
+  if (!checkIn || !checkOut) return 0;
+  let h = (new Date(checkOut) - new Date(checkIn)) / 3600000;
+  if (h > 5) h -= 1;
+  return Math.max(h, 0);
+}
+function isWorkerOnBorongan(workerId, date) {
+  return boronganList.some(b =>
+    b.tukang_ids.includes(workerId) && b.status === "aktif" &&
+    date >= b.tanggal_mulai && (!b.tanggal_selesai || date <= b.tanggal_selesai)
+  );
+}
+
+/* ---------- data demo (kalau Supabase belum dikonfigurasi) ---------- */
+const DEMO_TUKANG = [
+  { id:"t1", nama:"Wayan Sudira", keahlian:"Tukang Batu & Bangunan", hp:"0812xxxxxx01", pin:"1111", verified:true, gaji_harian:150000 },
+  { id:"t2", nama:"Made Arta", keahlian:"Listrik & Plumbing", hp:"0812xxxxxx02", pin:"2222", verified:true, gaji_harian:150000 },
+];
+const DEMO_PROYEK = [
+  { id:"p1", nama:"Renovasi Villa Umalas", alamat:"Jl. Umalas I, Kerobokan", lat:-8.6580, lng:115.1590, radius_m:100 },
+  { id:"p2", nama:"Bakery & Gelato Sanur", alamat:"Jl. Danau Tamblingan, Sanur", lat:-8.6900, lng:115.2620, radius_m:80 },
+];
+let absensiLogLocal = [];
+let fotoLogLocal = [];
+
+/* ---------- load data ---------- */
+async function loadData() {
+  if (configured) {
+    const { data: t } = await supabase.from("tukang").select("*").order("nama");
+    const { data: p } = await supabase.from("proyek").select("*").eq("aktif", true).order("nama");
+    const { data: k } = await supabase.from("kasbon").select("*").order("tanggal", { ascending:false });
+    const { data: b } = await supabase.from("borongan").select("*").order("created_at", { ascending:false });
+    tukangList = t || [];
+    proyekList = p || [];
+    kasbonList = k || [];
+    boronganList = b || [];
+  } else {
+    tukangList = DEMO_TUKANG;
+    proyekList = DEMO_PROYEK;
+    kasbonList = [];
+    boronganList = [];
+    document.getElementById("config-warning").classList.remove("hidden");
+  }
+  selectedProyek = proyekList[0] || null;
+  renderLoginSelect();
+}
+
+async function fetchAbsensi(filters = {}) {
+  if (configured) {
+    let q = supabase.from("absensi_log").select("*, tukang(nama), proyek(nama)").order("created_at", { ascending:false });
+    if (filters.tukangId) q = q.eq("tukang_id", filters.tukangId);
+    const { data } = await q.limit(filters.limit || 200);
+    return (data || []).map(r => ({ ...r, tukang_nama: r.tukang?.nama, proyek_nama: r.proyek?.nama }));
+  }
+  let rows = absensiLogLocal;
+  if (filters.tukangId) rows = rows.filter(r => r.tukang_id === filters.tukangId);
+  return rows;
+}
+
+function renderLoginSelect() {
+  const sel = document.getElementById("login-tukang");
+  sel.innerHTML = tukangList.map(t => `<option value="${t.id}">${t.nama}${t.verified ? "" : " (belum terverifikasi)"}</option>`).join("");
+}
+
+/* ---------- login ---------- */
+function showAdminLogin() {
+  document.getElementById("view-login").classList.add("hidden");
+  document.getElementById("view-admin-login").classList.remove("hidden");
+}
+function showTukangLogin() {
+  document.getElementById("view-admin-login").classList.add("hidden");
+  document.getElementById("view-login").classList.remove("hidden");
+}
+async function handleLogin() {
+  const id = document.getElementById("login-tukang").value;
+  const pin = document.getElementById("login-pin").value;
+  const t = tukangList.find(x => x.id === id);
+  const err = document.getElementById("login-error");
+  if (!t) { err.textContent = "Pilih nama terlebih dahulu."; return; }
+  if (!t.verified) { err.textContent = "Akun ini belum diverifikasi admin."; return; }
+  if (t.pin !== pin) { err.textContent = "PIN salah."; return; }
+  err.textContent = "";
+  currentTukang = t;
+  isAdmin = false;
+  enterApp();
+}
+function handleAdminLogin() {
+  const pass = document.getElementById("admin-pass").value;
+  const err = document.getElementById("admin-login-error");
+  if (pass !== ADMIN_PASSWORD) { err.textContent = "Kata sandi salah."; return; }
+  err.textContent = "";
+  isAdmin = true;
+  currentTukang = null;
+  enterApp();
+}
+function handleLogout() {
+  currentTukang = null;
+  isAdmin = false;
+  document.getElementById("view-app").classList.add("hidden");
+  document.getElementById("view-admin-login").classList.add("hidden");
+  document.getElementById("view-login").classList.remove("hidden");
+  document.getElementById("login-pin").value = "";
+}
+
+async function enterApp() {
+  document.getElementById("view-login").classList.add("hidden");
+  document.getElementById("view-admin-login").classList.add("hidden");
+  document.getElementById("view-app").classList.remove("hidden");
+  document.getElementById("header-title").textContent = isAdmin ? "Panel Admin" : "Absensi Tukang";
+  document.getElementById("header-sub").textContent = isAdmin ? "Kelola tukang, gaji & proyek" : `Halo, ${currentTukang.nama}`;
+  document.querySelectorAll(".hidden-admin").forEach(el => el.classList.toggle("hidden", !isAdmin));
+  document.getElementById("absensi-tukang-view").classList.toggle("hidden", isAdmin);
+  document.getElementById("absensi-admin-view").classList.toggle("hidden", !isAdmin);
+
+  renderProyekSelects();
+  if (isAdmin) {
+    renderTukangList();
+    renderManualForm();
+    renderSesiTerbuka();
+    renderRiwayatSesiAdmin();
+    renderKasbonForm();
+    renderKasbonList();
+    renderBoronganForm();
+    renderBoronganLists();
+    const today = todayStr();
+    document.getElementById("gaji-mulai").value = addDays(today, -13);
+    document.getElementById("gaji-sampai").value = today;
+    renderGajian();
+  } else {
+    await refreshTukangAbsensiState();
+  }
+  renderFotoGrid();
+  switchTab("absensi");
+}
+
+/* ---------- tabs ---------- */
+function switchTab(tab) {
+  ["absensi","foto","tukang","kasbon","borongan","gajian"].forEach(t => {
+    const sec = document.getElementById("tab-" + t);
+    if (sec) sec.classList.toggle("hidden", t !== tab);
+    const nav = document.getElementById("nav-" + t);
+    if (nav) nav.classList.toggle("active", t === tab);
+  });
+}
+
+/* ---------- proyek select ---------- */
+function renderProyekSelects() {
+  const opts = proyekList.map(p => `<option value="${p.id}">${p.nama}</option>`).join("");
+  document.getElementById("absen-proyek").innerHTML = opts;
+  document.getElementById("foto-proyek").innerHTML = opts;
+  document.getElementById("man-proyek").innerHTML = opts;
+  onProyekChange();
+}
+function onProyekChange() {
+  const id = document.getElementById("absen-proyek").value;
+  selectedProyek = proyekList.find(p => p.id === id) || proyekList[0];
+  document.getElementById("absen-proyek-info").textContent = selectedProyek ? `${selectedProyek.alamat} · radius ${selectedProyek.radius_m}m` : "";
+  resetRadar();
+}
+function resetRadar() {
+  document.getElementById("absen-status").textContent = "Tekan tombol untuk absen di lokasi proyek";
+  document.getElementById("absen-status").style.color = "var(--concrete)";
+  document.getElementById("radar-dot").style.background = "#9AA5AC";
+  document.getElementById("radar-pulse").style.background = "#9AA5AC";
+  document.getElementById("radar-pulse").style.width = "0";
+  document.getElementById("radar-pulse").style.height = "0";
+}
+
+/* ---------- absensi GPS: check-in / check-out (tukang) ---------- */
+let openSessionId = null;
+
+async function refreshTukangAbsensiState() {
+  const rows = await fetchAbsensi({ tukangId: currentTukang.id, limit: 30 });
+  const openToday = rows.find(r => !r.checkout_at && r.created_at.slice(0,10) === todayStr());
+  openSessionId = openToday ? openToday.id : null;
+  document.getElementById("btn-checkin").classList.toggle("hidden", !!openSessionId);
+  document.getElementById("btn-checkout").classList.toggle("hidden", !openSessionId);
+  if (openToday) {
+    document.getElementById("absen-status").textContent = `Sedang bekerja sejak ${fmtJamOnly(openToday.created_at)}`;
+    document.getElementById("absen-status").style.color = "var(--ok)";
+  }
+  renderAbsensiRiwayat(rows);
+}
+
+function handleCheckIn() {
+  if (!currentTukang) { alert("Masuk sebagai tukang untuk absen."); return; }
+  const p = selectedProyek;
+  if (!p) return;
+  document.getElementById("absen-status").textContent = "Mengambil lokasi GPS…";
+  document.getElementById("absen-status").style.color = "var(--concrete)";
+  if (!navigator.geolocation) {
+    document.getElementById("absen-status").textContent = "Perangkat tidak mendukung GPS.";
+    document.getElementById("absen-status").style.color = "var(--bad)";
+    return;
+  }
+  navigator.geolocation.getCurrentPosition(async (pos) => {
+    const { latitude, longitude } = pos.coords;
+    const dist = haversine(latitude, longitude, p.lat, p.lng);
+    const valid = dist <= p.radius_m;
+    updateRadar(dist, p.radius_m, valid);
+    const entry = { tukang_id: currentTukang.id, proyek_id: p.id, lat: latitude, lng: longitude, jarak_m: Math.round(dist), valid, sumber: "gps" };
+    if (configured) {
+      const { data } = await supabase.from("absensi_log").insert(entry).select().single();
+      openSessionId = data?.id || null;
+    } else {
+      const rec = { ...entry, id: Date.now(), tukang_nama: currentTukang.nama, proyek_nama: p.nama, created_at: new Date().toISOString(), checkout_at: null };
+      absensiLogLocal.unshift(rec);
+      openSessionId = rec.id;
+    }
+    document.getElementById("btn-checkin").classList.add("hidden");
+    document.getElementById("btn-checkout").classList.remove("hidden");
+    await refreshTukangAbsensiState();
+  }, () => {
+    document.getElementById("absen-status").textContent = "Izin lokasi ditolak / gagal. Aktifkan GPS & izin lokasi.";
+    document.getElementById("absen-status").style.color = "var(--bad)";
+  }, { enableHighAccuracy: true, timeout: 10000 });
+}
+
+async function handleCheckOut() {
+  if (!openSessionId) return;
+  const now = new Date().toISOString();
+  if (configured) {
+    const { data: row } = await supabase.from("absensi_log").select("created_at").eq("id", openSessionId).single();
+    const jam = sessionHours(row.created_at, now);
+    await supabase.from("absensi_log").update({ checkout_at: now, jam_kerja: jam }).eq("id", openSessionId);
+  } else {
+    const rec = absensiLogLocal.find(r => r.id === openSessionId);
+    if (rec) { rec.checkout_at = now; rec.jam_kerja = sessionHours(rec.created_at, now); }
+  }
+  openSessionId = null;
+  document.getElementById("btn-checkout").classList.add("hidden");
+  document.getElementById("btn-checkin").classList.remove("hidden");
+  resetRadar();
+  document.getElementById("absen-status").textContent = "Absen pulang tercatat. Terima kasih!";
+  document.getElementById("absen-status").style.color = "var(--ok)";
+  await refreshTukangAbsensiState();
+}
+
+function updateRadar(dist, radius, valid) {
+  const color = valid ? "#2C7A3D" : "#B23B3B";
+  const ratio = Math.min(dist / radius, 1.8);
+  const size = Math.min(46 + ratio * 60, 140);
+  document.getElementById("radar-dot").style.background = color;
+  document.getElementById("radar-pulse").style.background = color;
+  document.getElementById("radar-pulse").style.opacity = "0.22";
+  document.getElementById("radar-pulse").style.width = size + "px";
+  document.getElementById("radar-pulse").style.height = size + "px";
+  const statusEl = document.getElementById("absen-status");
+  statusEl.style.color = color;
+  statusEl.textContent = valid
+    ? `Absen masuk berhasil · ${Math.round(dist)}m dari lokasi`
+    : `Di luar radius · ${Math.round(dist)}m dari lokasi (tetap tercatat)`;
+}
+
+function renderAbsensiRiwayat(rows) {
+  const el = document.getElementById("absen-riwayat");
+  if (!rows || rows.length === 0) { el.innerHTML = `<div class="empty">Belum ada riwayat absen.</div>`; return; }
+  el.innerHTML = `<p class="hint" style="margin:6px 0;">Riwayat Absen</p>` + rows.slice(0,15).map(r => `
+    <div class="card" style="padding:12px 14px;margin-bottom:8px;">
+      <div class="row-between">
+        <p style="margin:0;font-weight:600;font-size:13px;">${r.proyek_nama || ""}</p>
+        <span class="hint">${fmtTime(r.created_at)}</span>
+      </div>
+      <p class="hint" style="margin-top:4px;">
+        ${r.checkout_at ? `Selesai ${fmtJamOnly(r.checkout_at)} · ${(r.jam_kerja||0).toFixed(1)} jam` : `<span style="color:var(--ok);font-weight:600;">Masih berlangsung</span>`}
+        ${r.valid === false ? " · ⚠️ di luar radius" : ""}
+      </p>
+    </div>`).join("");
+}
+
+/* ---------- admin: koreksi/tambah manual + sesi terbuka ---------- */
+function renderManualForm() {
+  document.getElementById("man-tukang").innerHTML = tukangList.map(t => `<option value="${t.id}">${t.nama}</option>`).join("");
+  document.getElementById("man-tanggal").value = todayStr();
+}
+
+async function handleAddManual() {
+  const tukangId = document.getElementById("man-tukang").value;
+  const proyekId = document.getElementById("man-proyek").value;
+  const tanggal = document.getElementById("man-tanggal").value;
+  const jamMasuk = document.getElementById("man-jam-masuk").value;
+  const jamPulang = document.getElementById("man-jam-pulang").value;
+  const catatan = document.getElementById("man-catatan").value.trim();
+  if (!tukangId || !proyekId || !tanggal) { alert("Lengkapi tukang, proyek, dan tanggal."); return; }
+  const checkIn = toISO(tanggal, jamMasuk);
+  const checkOut = jamPulang ? toISO(tanggal, jamPulang) : null;
+  const jam = checkOut ? sessionHours(checkIn, checkOut) : null;
+  const entry = { tukang_id: tukangId, proyek_id: proyekId, created_at: checkIn, checkout_at: checkOut, jam_kerja: jam, valid: true, sumber: "manual", catatan };
+  if (configured) {
+    await supabase.from("absensi_log").insert(entry);
+  } else {
+    const t = tukangList.find(x=>x.id===tukangId), p = proyekList.find(x=>x.id===proyekId);
+    absensiLogLocal.unshift({ ...entry, id: Date.now(), tukang_nama: t?.nama, proyek_nama: p?.nama });
+  }
+  document.getElementById("man-catatan").value = "";
+  await renderSesiTerbuka();
+  await renderRiwayatSesiAdmin();
+  await renderGajian();
+}
+
+async function renderSesiTerbuka() {
+  const rows = await fetchAbsensi({ limit: 200 });
+  const open = rows.filter(r => !r.checkout_at);
+  const el = document.getElementById("sesi-terbuka-list");
+  if (open.length === 0) { el.innerHTML = `<div class="empty">Tidak ada sesi terbuka.</div>`; return; }
+  el.innerHTML = open.map(r => `
+    <div class="tukang-item">
+      <div>
+        <p class="tukang-nama">${r.tukang_nama}</p>
+        <p class="tukang-sub">${r.proyek_nama} · masuk ${fmtTime(r.created_at)}</p>
+      </div>
+      <div class="row" style="gap:4px;">
+        <input type="time" id="close-time-${r.id}" value="17:00" style="width:90px;padding:6px;font-size:12px;" />
+        <button class="toggle-btn" style="background:var(--ok);" onclick="closeOpenSession('${r.id}','${r.created_at.slice(0,10)}')">Tutup</button>
+      </div>
+    </div>`).join("");
+}
+
+async function closeOpenSession(id, dateStr) {
+  const t = document.getElementById(`close-time-${id}`).value;
+  const checkOut = toISO(dateStr, t);
+  if (configured) {
+    const { data: row } = await supabase.from("absensi_log").select("created_at").eq("id", id).single();
+    const jam = sessionHours(row.created_at, checkOut);
+    await supabase.from("absensi_log").update({ checkout_at: checkOut, jam_kerja: jam }).eq("id", id);
+  } else {
+    const rec = absensiLogLocal.find(r => r.id == id);
+    if (rec) { rec.checkout_at = checkOut; rec.jam_kerja = sessionHours(rec.created_at, checkOut); }
+  }
+  await renderSesiTerbuka();
+  await renderRiwayatSesiAdmin();
+  await renderGajian();
+}
+
+async function renderRiwayatSesiAdmin() {
+  const rows = await fetchAbsensi({ limit: 60 });
+  const el = document.getElementById("admin-riwayat-sesi");
+  if (rows.length === 0) { el.innerHTML = `<div class="empty">Belum ada data.</div>`; return; }
+  el.innerHTML = rows.map(r => `
+    <div class="entry-row">
+      <span>${fmtTime(r.created_at)} · ${r.tukang_nama} · ${r.proyek_nama}</span>
+      <span class="mono">${r.checkout_at ? (r.jam_kerja||0).toFixed(1)+" jam" : "berjalan"}</span>
+    </div>`).join("");
+}
+
+/* ---------- foto kerja ---------- */
+async function handlePhotoUpload(e) {
+  if (!currentTukang) { alert("Masuk sebagai tukang untuk unggah foto."); return; }
+  const files = Array.from(e.target.files || []);
+  const proyekId = document.getElementById("foto-proyek").value;
+  const proyek = proyekList.find(p => p.id === proyekId);
+  const caption = document.getElementById("foto-caption").value;
+  for (const f of files) {
+    if (configured) {
+      const path = `${proyekId}/${Date.now()}_${f.name}`;
+      const { error } = await supabase.storage.from("foto-kerja").upload(path, f);
+      if (error) { alert("Gagal unggah: " + error.message); continue; }
+      const { data: urlData } = supabase.storage.from("foto-kerja").getPublicUrl(path);
+      await supabase.from("foto_kerja").insert({ tukang_id: currentTukang.id, proyek_id: proyekId, foto_url: urlData.publicUrl, keterangan: caption });
+    } else {
+      const dataUrl = await fileToDataUrl(f);
+      fotoLogLocal.unshift({ id: Date.now()+Math.random(), foto_url: dataUrl, keterangan: caption, tukang_nama: currentTukang.nama, proyek_nama: proyek?.nama, created_at: new Date().toISOString(), tukang_id: currentTukang.id });
+    }
+  }
+  document.getElementById("foto-caption").value = "";
+  document.getElementById("foto-input").value = "";
+  renderFotoGrid();
+}
+
+async function renderFotoGrid() {
+  const el = document.getElementById("foto-grid");
+  let rows = [];
+  if (configured) {
+    let q = supabase.from("foto_kerja").select("*, tukang(nama), proyek(nama)").order("created_at", { ascending:false }).limit(20);
+    if (!isAdmin) q = q.eq("tukang_id", currentTukang.id);
+    const { data } = await q;
+    rows = (data || []).map(r => ({ ...r, tukang_nama: r.tukang?.nama, proyek_nama: r.proyek?.nama }));
+  } else {
+    rows = isAdmin ? fotoLogLocal : fotoLogLocal.filter(r => r.tukang_id === currentTukang?.id);
+  }
+  if (rows.length === 0) { el.innerHTML = `<div class="empty">Belum ada foto pekerjaan.</div>`; return; }
+  el.innerHTML = `<div class="photo-grid">` + rows.map(r => `
+    <div class="photo-card">
+      <img src="${r.foto_url}" alt="${r.keterangan || ''}" />
+      <div class="photo-meta">
+        <p class="p-proyek">${r.proyek_nama || ""}</p>
+        <p class="p-sub">${r.tukang_nama || ""}${r.keterangan ? " · " + r.keterangan : ""}</p>
+        <p class="p-sub">${fmtTime(r.created_at)}</p>
+      </div>
+    </div>`).join("") + `</div>`;
+}
+
+/* ---------- kelola tukang (admin) ---------- */
+async function renderTukangList() {
+  const el = document.getElementById("tukang-list");
+  el.innerHTML = tukangList.map(t => `
+    <div class="tukang-item">
+      <div>
+        <p class="tukang-nama">${t.nama}</p>
+        <p class="tukang-sub">${t.keahlian || ""} · ${t.hp || ""} · ${fmtIDR(t.gaji_harian)}/hari</p>
+      </div>
+      <div style="text-align:right;">
+        <span class="badge ${t.verified ? 'badge-ok' : 'badge-bad'}">${t.verified ? "Terverifikasi" : "Belum"}</span><br/>
+        <button class="toggle-btn" style="margin-top:6px;background:${t.verified ? '#9AA5AC' : '#1C3F52'};" onclick="toggleVerified('${t.id}')">
+          ${t.verified ? "Batalkan" : "Verifikasi"}
+        </button>
+      </div>
+    </div>`).join("");
+}
+async function toggleVerified(id) {
+  const t = tukangList.find(x => x.id === id);
+  if (!t) return;
+  t.verified = !t.verified;
+  if (configured) await supabase.from("tukang").update({ verified: t.verified }).eq("id", id);
+  renderTukangList();
+  renderLoginSelect();
+}
+async function handleAddTukang() {
+  const nama = document.getElementById("new-nama").value.trim();
+  const keahlian = document.getElementById("new-keahlian").value.trim();
+  const hp = document.getElementById("new-hp").value.trim();
+  const gaji = parseInt(document.getElementById("new-gaji").value, 10) || 0;
+  const pin = document.getElementById("new-pin").value.trim();
+  if (!nama || pin.length !== 4) { alert("Isi nama dan PIN 4 digit."); return; }
+  const entry = { nama, keahlian, hp, pin, verified: false, gaji_harian: gaji };
+  if (configured) {
+    await supabase.from("tukang").insert(entry);
+    const { data } = await supabase.from("tukang").select("*").order("nama");
+    tukangList = data || [];
+  } else {
+    tukangList.push({ ...entry, id: "local-" + Date.now() });
+  }
+  ["new-nama","new-keahlian","new-hp","new-gaji","new-pin"].forEach(id => document.getElementById(id).value = "");
+  renderTukangList();
+  renderLoginSelect();
+  renderManualForm();
+  renderKasbonForm();
+  renderBoronganForm();
+}
+
+/* ---------- kasbon (admin) ---------- */
+function renderKasbonForm() {
+  document.getElementById("kasbon-tukang").innerHTML = tukangList.map(t => `<option value="${t.id}">${t.nama}</option>`).join("");
+  document.getElementById("kasbon-tanggal").value = todayStr();
+}
+async function handleAddKasbon() {
+  const tukangId = document.getElementById("kasbon-tukang").value;
+  const tanggal = document.getElementById("kasbon-tanggal").value;
+  const jumlah = parseInt(document.getElementById("kasbon-jumlah").value, 10);
+  const ket = document.getElementById("kasbon-ket").value.trim();
+  if (!tukangId || !jumlah || jumlah <= 0) { alert("Pilih tukang dan isi jumlah."); return; }
+  const entry = { tukang_id: tukangId, tanggal, jumlah, keterangan: ket };
+  if (configured) {
+    await supabase.from("kasbon").insert(entry);
+    const { data } = await supabase.from("kasbon").select("*").order("tanggal", { ascending:false });
+    kasbonList = data || [];
+  } else {
+    kasbonList.unshift({ ...entry, id: Date.now() });
+  }
+  document.getElementById("kasbon-jumlah").value = "";
+  document.getElementById("kasbon-ket").value = "";
+  renderKasbonList();
+  renderGajian();
+}
+function renderKasbonList() {
+  const el = document.getElementById("kasbon-list");
+  if (kasbonList.length === 0) { el.innerHTML = `<div class="empty">Belum ada kasbon.</div>`; return; }
+  el.innerHTML = kasbonList.map(k => {
+    const t = tukangList.find(x => x.id === k.tukang_id);
+    return `<div class="entry-row"><span>${fmtDate(k.tanggal)} · ${t?.nama || "?"} ${k.keterangan ? "· "+k.keterangan : ""}</span><span class="mono">${fmtIDR(k.jumlah)}</span></div>`;
+  }).join("");
+}
+
+/* ---------- borongan (admin) ---------- */
+function renderBoronganForm() {
+  document.getElementById("bor-mulai").value = todayStr();
+  boronganSelected = [];
+  document.getElementById("bor-tukang-checklist").innerHTML = tukangList.map(t => `
+    <label style="display:flex;align-items:center;gap:8px;padding:4px 0;font-size:14px;">
+      <input type="checkbox" value="${t.id}" onchange="toggleBoronganSel('${t.id}')" /> ${t.nama}
+    </label>`).join("");
+}
+function toggleBoronganSel(id) {
+  boronganSelected = boronganSelected.includes(id) ? boronganSelected.filter(x=>x!==id) : [...boronganSelected, id];
+}
+async function handleAddBorongan() {
+  const nama = document.getElementById("bor-nama").value.trim();
+  const nilai = parseInt(document.getElementById("bor-nilai").value, 10) || 0;
+  const mulai = document.getElementById("bor-mulai").value;
+  if (!nama || boronganSelected.length === 0) { alert("Isi nama proyek dan pilih minimal 1 tukang."); return; }
+  const entry = { nama, nilai_kontrak: nilai, tanggal_mulai: mulai, tanggal_selesai: null, status: "aktif", tukang_ids: boronganSelected };
+  if (configured) {
+    await supabase.from("borongan").insert(entry);
+    const { data } = await supabase.from("borongan").select("*").order("created_at", { ascending:false });
+    boronganList = data || [];
+  } else {
+    boronganList.unshift({ ...entry, id: Date.now() });
+  }
+  document.getElementById("bor-nama").value = "";
+  document.getElementById("bor-nilai").value = "";
+  renderBoronganForm();
+  renderBoronganLists();
+  renderGajian();
+}
+function renderBoronganLists() {
+  const aktif = boronganList.filter(b => b.status === "aktif");
+  const selesai = boronganList.filter(b => b.status === "selesai");
+  const tukangNama = id => tukangList.find(t=>t.id===id)?.nama || "?";
+
+  document.getElementById("borongan-aktif-list").innerHTML = aktif.length === 0 ? `<div class="empty">Tidak ada proyek aktif.</div>` :
+    aktif.map(b => `
+      <div style="padding:10px 0;border-bottom:1px solid var(--border);">
+        <p style="font-weight:600;margin:0;">${b.nama}</p>
+        <p class="hint">${b.tukang_ids.map(tukangNama).join(", ")} · sejak ${fmtDate(b.tanggal_mulai)} · est. ${fmtIDR(b.nilai_kontrak)}</p>
+        <div class="row" style="margin-top:8px;">
+          <input id="bor-final-${b.id}" type="number" placeholder="Nilai akhir (opsional)" style="flex:1;padding:8px;font-size:12px;" />
+          <button class="toggle-btn" style="background:var(--ok);" onclick="finishBorongan('${b.id}')">Selesai</button>
+        </div>
+      </div>`).join("");
+
+  document.getElementById("borongan-selesai-list").innerHTML = selesai.length === 0 ? `<div class="empty">Belum ada.</div>` :
+    selesai.map(b => {
+      const tukangShare = (b.nilai_final || 0) * 0.7;
+      const perTukang = tukangShare / b.tukang_ids.length;
+      const ownerShare = (b.nilai_final || 0) * 0.3;
+      return `<div style="padding:10px 0;border-bottom:1px solid var(--border);">
+        <p style="font-weight:600;margin:0;">${b.nama}</p>
+        <p class="hint">${fmtDate(b.tanggal_mulai)} – ${fmtDate(b.tanggal_selesai)} · Nilai akhir ${fmtIDR(b.nilai_final)}</p>
+        <p style="font-size:13px;font-family:monospace;margin:4px 0 0;">Bagian tukang (70%): ${fmtIDR(tukangShare)} → ${fmtIDR(perTukang)}/orang</p>
+        <p style="font-size:13px;font-family:monospace;margin:2px 0 0;">Bagian pemilik (30%): ${fmtIDR(ownerShare)}</p>
+      </div>`;
+    }).join("");
+}
+async function finishBorongan(id) {
+  const finalInput = document.getElementById(`bor-final-${id}`).value;
+  const b = boronganList.find(x => x.id == id);
+  const finalVal = parseInt(finalInput, 10) || b.nilai_kontrak;
+  if (configured) {
+    await supabase.from("borongan").update({ status:"selesai", tanggal_selesai: todayStr(), nilai_final: finalVal }).eq("id", id);
+    const { data } = await supabase.from("borongan").select("*").order("created_at", { ascending:false });
+    boronganList = data || [];
+  } else {
+    b.status = "selesai"; b.tanggal_selesai = todayStr(); b.nilai_final = finalVal;
+  }
+  renderBoronganLists();
+  renderGajian();
+}
+
+/* ---------- GAJIAN — hari dihitung dari total jam / 8, BUKAN jumlah tanggal unik ---------- */
+async function renderGajian() {
+  const start = document.getElementById("gaji-mulai").value;
+  const end = document.getElementById("gaji-sampai").value;
+  if (!start || !end) return;
+  const allAbsensi = await fetchAbsensi({ limit: 1000 });
+
+  const report = tukangList.map(w => {
+    let hari = 0, jam = 0, kotor = 0;
+    const byLocation = {};
+    const entries = [];
+    const dates = [];
+    let d = start;
+    while (d <= end) { dates.push(d); d = addDays(d, 1); }
+
+    dates.forEach(date => {
+      if (isWorkerOnBorongan(w.id, date)) return;
+      const sessions = allAbsensi.filter(a => a.tukang_id === w.id && a.created_at.slice(0,10) === date && a.checkout_at);
+      if (sessions.length === 0) return;
+      const dayTotalRaw = sessions.reduce((s,a) => s + (a.jam_kerja || sessionHours(a.created_at, a.checkout_at)), 0);
+      const dayTotal = Math.min(dayTotalRaw, 8);
+      if (dayTotal > 0) {
+        hari += 1; jam += dayTotal;
+        kotor += (w.gaji_harian || 0) * (dayTotal / 8);
+      }
+      sessions.forEach(a => {
+        const h = a.jam_kerja || sessionHours(a.created_at, a.checkout_at);
+        entries.push({ date, lokasi: a.proyek_nama, jam: h });
+        if (!byLocation[a.proyek_nama]) byLocation[a.proyek_nama] = { jam: 0 };
+        byLocation[a.proyek_nama].jam += h;
+      });
+    });
+
+    // FIX: hari per lokasi = total jam / 8 (bukan jumlah tanggal unik)
+    const lokasiTotals = Object.entries(byLocation)
+      .map(([lokasi, v]) => ({ lokasi, jam: v.jam, hari: v.jam / 8 }))
+      .sort((a,b) => b.jam - a.jam);
+
+    const kasbonTotal = kasbonList
+      .filter(k => k.tukang_id === w.id && k.tanggal >= start && k.tanggal <= end)
+      .reduce((s,k) => s + k.jumlah, 0);
+
+    return { worker: w, hari, jam, kotor, kasbonTotal, bersih: kotor - kasbonTotal, entries, lokasiTotals };
+  });
+
+  const totalBersih = report.reduce((s,r) => s + r.bersih, 0);
+  document.getElementById("gaji-total").textContent = fmtIDR(totalBersih);
+
+  const el = document.getElementById("gajian-list");
+  el.innerHTML = report.map(r => `
+    <div class="card" style="border-style:dashed;">
+      <div class="row-between" style="font-weight:600;">
+        <span>${r.worker.nama}</span><span class="mono">${fmtIDR(r.bersih)}</span>
+      </div>
+      <p class="hint mono">${r.hari} hari · ${r.jam.toFixed(1)} jam · kotor ${fmtIDR(r.kotor)} − kasbon ${fmtIDR(r.kasbonTotal)}</p>
+      ${r.lokasiTotals.length > 0 ? `
+        <div class="divider"></div>
+        <p class="hint" style="margin-bottom:4px;">TOTAL PER LOKASI</p>
+        ${r.lokasiTotals.map(l => `<div class="lokasi-row"><span>📍 ${l.lokasi}</span><span class="mono">${l.hari.toFixed(1)} hari · ${l.jam.toFixed(1)} jam</span></div>`).join("")}
+      ` : ""}
+    </div>`).join("");
+}
+
+/* ---------- init ---------- */
+loadData();
+</script>
+</body>
+</html>
